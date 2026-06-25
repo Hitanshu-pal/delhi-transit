@@ -12,6 +12,7 @@ dist/
 backend/data/*.txt
 backend/data/*.csv
 backend/data/*.zip
+backend/data/graph.pkl
 
 # Node
 frontend/node_modules/
