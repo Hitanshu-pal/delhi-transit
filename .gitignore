@@ -9,11 +9,10 @@ dist/
 *.pickle
 
 # Data files (too large for git)
-backend/data/*.txt
-backend/data/*.csv
-backend/data/*.zip
+# Data files (too large for git)
+backend/data/dmrc/
+backend/data/dtc/
 backend/data/graph.pkl
-
 # Node
 frontend/node_modules/
 frontend/dist/
