@@ -84,36 +84,6 @@ def explore_feed(folder: str, label: str):
 
 if __name__ == "__main__":
     print("\nDelhi Transit — GTFS Data Explorer")
-    print("Checking for feed folders inside backend/data/\n")
 
-    found_any = False
-
-    # DTC bus feed — expected folder name
-    for bus_folder in ["dtc", "DTC", "bus", "delhi_bus"]:
-        if os.path.isdir(os.path.join(DATA_DIR, bus_folder)):
-            explore_feed(bus_folder, "DTC Bus (GTFS)")
-            found_any = True
-            break
-
-    # DMRC metro feed — expected folder name
-    for metro_folder in ["dmrc", "DMRC", "metro", "delhi_metro"]:
-        if os.path.isdir(os.path.join(DATA_DIR, metro_folder)):
-            explore_feed(metro_folder, "DMRC Metro (GTFS)")
-            found_any = True
-            break
-
-    # Fallback: if user dropped files flat into data/
-    if not found_any:
-        if os.path.exists(os.path.join(DATA_DIR, "stops.txt")):
-            print("Found GTFS files directly in data/ (no subfolder).")
-            explore_feed(".", "Combined feed")
-        else:
-            print("No GTFS data found yet.")
-            print()
-            print("Next steps:")
-            print("  1. Download DTC bus GTFS from https://otd.delhi.gov.in")
-            print("  2. Unzip into backend/data/dtc/")
-            print("  3. Download DMRC metro stops CSV from:")
-            print("     https://github.com/justjkk/delhi-metro (or similar community dataset)")
-            print("     Place in backend/data/dmrc/")
-            print("  4. Re-run: python explore_gtfs.py")
+    explore_feed("dmrc", "DMRC Metro")
+    explore_feed("dtc", "DTC Bus")

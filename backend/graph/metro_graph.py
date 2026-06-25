@@ -1,126 +1,130 @@
 """
-metro_graph.py — builds a directed NetworkX graph for the Delhi Metro.
+metro_graph.py — builds a directed NetworkX graph for the Delhi Metro
+from the OTD GTFS feed.
 
-Node ID format:  "metro:<stop_id>"
+Node ID format : "metro:<stop_id>"
 Edge attributes:
-    weight      float   travel time in minutes
+    weight      float   travel time in minutes (departure to arrival)
     mode        str     "metro"
-    line        str     e.g. "Yellow Line"
-    from_stop   str     human-readable name
-    to_stop     str     human-readable name
-
-Usage:
-    from graph.metro_graph import build_metro_graph
-    G = build_metro_graph("data/dmrc/stops.txt", "data/dmrc/stop_times.txt")
+    route_id    str     e.g. "1" (matches routes.txt)
+    from_stop   str     human-readable station name
+    to_stop     str     human-readable station name
 """
 
 import pandas as pd
 import networkx as nx
-from haversine import haversine, Unit
 
 
-# Average metro speed km/h — used as fallback when stop_times lack real times
-METRO_SPEED_KMH = 34
-
-# Headway penalty added to every boarding event (average wait time)
-HEADWAY_MINUTES = 4.0
+HEADWAY_MINUTES = 4.0   # average wait to board (added once per trip leg)
 
 
 def _parse_time(t: str) -> float:
-    """Convert HH:MM:SS string to minutes. Handles times past midnight (e.g. 25:00:00)."""
-    h, m, s = t.strip().split(":")
+    """HH:MM:SS -> minutes. Handles post-midnight times like 25:00:00."""
+    h, m, s = str(t).strip().split(":")
     return int(h) * 60 + int(m) + int(s) / 60
 
 
-def build_metro_graph(stops_path: str, stop_times_path: str = None) -> nx.DiGraph:
+def build_metro_graph(data_dir: str) -> nx.DiGraph:
     """
-    Build metro graph from GTFS stops.txt and optionally stop_times.txt.
-    If stop_times.txt is absent, falls back to haversine distance / speed estimate.
-    """
-    stops = pd.read_csv(stops_path)
-    stops = stops.dropna(subset=["stop_lat", "stop_lon"])
+    Build metro graph from GTFS files in data_dir/dmrc/.
 
-    # Normalise column names to lowercase
-    stops.columns = [c.strip().lower() for c in stops.columns]
+    Args:
+        data_dir: path to the backend/data folder
+
+    Returns:
+        nx.DiGraph with time-cost edges
+    """
+    import os
+    dmrc = os.path.join(data_dir, "dmrc")
+
+    stops      = pd.read_csv(os.path.join(dmrc, "stops.txt"))
+    trips      = pd.read_csv(os.path.join(dmrc, "trips.txt"))
+    stop_times = pd.read_csv(os.path.join(dmrc, "stop_times.txt"),
+                             low_memory=False)
+
+    # Normalise column names
+    stops.columns      = stops.columns.str.strip().str.lower()
+    trips.columns      = trips.columns.str.strip().str.lower()
+    stop_times.columns = stop_times.columns.str.strip().str.lower()
+
+    # Build stop_id -> name lookup
+    stop_names = dict(zip(stops["stop_id"], stops["stop_name"]))
+    stop_coords = dict(zip(stops["stop_id"],
+                           zip(stops["stop_lat"], stops["stop_lon"])))
+
+    # Build trip_id -> route_id lookup
+    trip_route = dict(zip(trips["trip_id"], trips["route_id"]))
 
     G = nx.DiGraph()
 
-    # ── Add all stops as nodes ──────────────────────────────────────────────
+    # Add all metro stations as nodes
     for _, row in stops.iterrows():
         node_id = f"metro:{row['stop_id']}"
         G.add_node(node_id,
-                   name=row.get("stop_name", row["stop_id"]),
+                   name=row["stop_name"],
                    lat=float(row["stop_lat"]),
                    lon=float(row["stop_lon"]),
-                   mode="metro",
-                   line=row.get("route_id", row.get("line_name", "unknown")))
+                   mode="metro")
 
-    # ── Add edges from stop_times.txt if available ──────────────────────────
-    if stop_times_path:
-        stop_times = pd.read_csv(stop_times_path, low_memory=False)
-        stop_times.columns = [c.strip().lower() for c in stop_times.columns]
-        stop_times = stop_times.sort_values(["trip_id", "stop_sequence"])
+    # Sort stop_times and build edges trip by trip
+    stop_times = stop_times.sort_values(["trip_id", "stop_sequence"])
 
-        for trip_id, group in stop_times.groupby("trip_id"):
-            rows = group.reset_index(drop=True)
-            for i in range(len(rows) - 1):
-                curr = rows.iloc[i]
-                nxt  = rows.iloc[i + 1]
+    edges_added = 0
+    edges_updated = 0
 
-                src = f"metro:{curr['stop_id']}"
-                dst = f"metro:{nxt['stop_id']}"
+    for trip_id, group in stop_times.groupby("trip_id"):
+        rows = group.reset_index(drop=True)
+        route_id = trip_route.get(trip_id, "unknown")
 
-                if src not in G or dst not in G:
-                    continue
+        for i in range(len(rows) - 1):
+            curr = rows.iloc[i]
+            nxt  = rows.iloc[i + 1]
 
-                try:
-                    dep = _parse_time(str(curr["departure_time"]))
-                    arr = _parse_time(str(nxt["arrival_time"]))
-                    travel_time = max(arr - dep, 0.5)   # floor at 30 sec
-                except Exception:
-                    travel_time = _fallback_time(G, src, dst)
+            src = f"metro:{curr['stop_id']}"
+            dst = f"metro:{nxt['stop_id']}"
 
-                # Only add edge if not already present (or if new time is faster)
-                if not G.has_edge(src, dst) or G[src][dst]["weight"] > travel_time:
-                    G.add_edge(src, dst,
-                               weight=travel_time,
-                               mode="metro",
-                               from_stop=G.nodes[src]["name"],
-                               to_stop=G.nodes[dst]["name"])
+            if src not in G or dst not in G:
+                continue
 
-    else:
-        # ── Fallback: connect stops that share a line in sequence ───────────
-        # Requires stops.txt to have a 'line_name' or 'route_id' column
-        # and stops ordered by sequence within each line.
-        line_col = "line_name" if "line_name" in stops.columns else "route_id"
-        if line_col in stops.columns:
-            for line, group in stops.groupby(line_col):
-                ordered = group.reset_index(drop=True)
-                for i in range(len(ordered) - 1):
-                    src_row = ordered.iloc[i]
-                    dst_row = ordered.iloc[i + 1]
-                    src = f"metro:{src_row['stop_id']}"
-                    dst = f"metro:{dst_row['stop_id']}"
-                    t   = _fallback_time(G, src, dst)
-                    G.add_edge(src, dst, weight=t, mode="metro",
-                               from_stop=src_row.get("stop_name", src),
-                               to_stop=dst_row.get("stop_name", dst))
-                    # Metro runs both directions
-                    G.add_edge(dst, src, weight=t, mode="metro",
-                               from_stop=dst_row.get("stop_name", dst),
-                               to_stop=src_row.get("stop_name", src))
+            try:
+                dep = _parse_time(curr["departure_time"])
+                arr = _parse_time(nxt["arrival_time"])
+                travel_time = max(arr - dep, 0.3)   # floor at 18 seconds
+            except Exception:
+                continue
 
-    print(f"[metro_graph] Built: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+            # Keep the fastest known time for this edge across all trips
+            if not G.has_edge(src, dst):
+                G.add_edge(src, dst,
+                           weight=travel_time,
+                           mode="metro",
+                           route_id=str(route_id),
+                           from_stop=stop_names.get(curr["stop_id"], src),
+                           to_stop=stop_names.get(nxt["stop_id"], dst))
+                edges_added += 1
+            elif G[src][dst]["weight"] > travel_time:
+                G[src][dst]["weight"] = travel_time
+                edges_updated += 1
+
+    print(f"[metro_graph] {G.number_of_nodes()} stations")
+    print(f"[metro_graph] {G.number_of_edges()} edges "
+          f"({edges_added} added, {edges_updated} updated to faster time)")
+
+    # Quick sanity check — print 5 sample edges
+    print("[metro_graph] Sample edges:")
+    for src, dst, data in list(G.edges(data=True))[:5]:
+        print(f"  {data['from_stop']:30s} -> {data['to_stop']:30s} "
+              f"  {data['weight']:.1f} min")
+
     return G
 
 
-def _fallback_time(G: nx.DiGraph, src: str, dst: str) -> float:
-    """Estimate travel time from haversine distance at average metro speed."""
-    src_data = G.nodes[src]
-    dst_data = G.nodes[dst]
-    dist_km = haversine(
-        (src_data["lat"], src_data["lon"]),
-        (dst_data["lat"], dst_data["lon"]),
-        unit=Unit.KILOMETERS
-    )
-    return (dist_km / METRO_SPEED_KMH) * 60 + HEADWAY_MINUTES
+if __name__ == "__main__":
+    import os
+    # Run directly to test: python metro_graph.py
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
+    G = build_metro_graph(data_dir)
+    print(f"\nTotal nodes : {G.number_of_nodes()}")
+    print(f"Total edges : {G.number_of_edges()}")
+    print(f"\nAvg travel time per edge: "
+          f"{sum(d['weight'] for _,_,d in G.edges(data=True)) / G.number_of_edges():.1f} min")
