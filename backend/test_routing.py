@@ -10,7 +10,7 @@ G=load_graph()
 src="metro:1"
 dst = "bus:800"
 path,cost=fewest_transfers(G,src,dst)
-print(f"Time: {cost:.1f}min")
+print(f"Transfers: {cost}")
 print(f"Stops:{len(path)}")
 for node in path:
     d = G.nodes[node]
