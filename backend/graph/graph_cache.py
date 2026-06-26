@@ -12,9 +12,9 @@ import pickle
 import time
 import networkx as nx
 
-from metro_graph    import build_metro_graph
-from bus_graph      import build_bus_graph
-from transfer_graph import build_combined_graph
+from graph.metro_graph    import build_metro_graph
+from graph.bus_graph      import build_bus_graph
+from graph.transfer_graph import build_combined_graph
 
 CACHE_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "graph.pkl")
 DATA_DIR   = os.path.join(os.path.dirname(__file__), "..", "data")
