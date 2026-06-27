@@ -1,5 +1,6 @@
 import { useState } from "react"
 import axios from "axios"
+import ResultsPanel from "./ResultsPanel"
 
 const API = "http://127.0.0.1:8000"
 
@@ -9,7 +10,7 @@ function SearchPanel({ onRouteFound }) {
   const [mode, setMode]               = useState("fastest")
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState(null)
-
+  const [route, setRoute]             = useState(null)
   async function handleSearch() {
     setLoading(true)
     setError(null)
@@ -35,7 +36,8 @@ function SearchPanel({ onRouteFound }) {
       })
 
       onRouteFound(routeRes.data)  // send result up to App.jsx
-
+      onRouteFound(routeRes.data)  // send result up to App.jsx
+      setRoute(routeRes.data)  // store result locally for ResultsPanel
     } catch (err) {
       setError("Could not find route. Try different stop names.")
     }
@@ -114,6 +116,7 @@ function SearchPanel({ onRouteFound }) {
       {error && (
         <p style={{ color: "red", fontSize: "13px" }}>{error}</p>
       )}
+      <ResultsPanel route={route} />
     </div>
   )
 }

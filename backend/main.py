@@ -20,12 +20,19 @@ def get_path_with_routes(G, path):
             "lon":  G.nodes[node]["lon"],
             "route_id": None
         }
-        # get route_id from the edge leading into this stop
-        if i > 0:
-            prev = path[i-1]
+        # look at edge leaving this node (forward) for first stop
+        # look at edge entering this node (backward) for all others
+        if i < len(path) - 1:
+            next_node = path[i + 1]
+            if G.has_edge(node, next_node):
+                stop["route_id"] = G[node][next_node].get("route_id")
+        else:
+            prev = path[i - 1]
             if G.has_edge(prev, node):
                 stop["route_id"] = G[prev][node].get("route_id")
         result.append(stop)
+    for stop in result:
+        print(stop["name"], stop["route_id"])
     return result
 
 @asynccontextmanager

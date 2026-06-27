@@ -1,5 +1,18 @@
 import { MapContainer, TileLayer, Polyline, CircleMarker, Popup } from "react-leaflet"
+import { useMap } from "react-leaflet"
+import { useEffect } from "react"
 
+function FitBounds({ path }) {
+  const map = useMap()
+  
+  useEffect(() => {
+    if (!path || path.length === 0) return
+    const bounds = path.map(stop => [stop.lat, stop.lon])
+    map.fitBounds(bounds, { padding: [40, 40] })
+  }, [path, map])
+
+  return null
+}
 const MODE_COLORS = {
   metro: "#1a73e8",
   bus:   "#34a853",
@@ -72,7 +85,7 @@ function MapView({ route }) {
       style={{ flex: 1, height: "100vh" }}
     >
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-
+      <FitBounds path={route?.path} />
       {segments.map((seg, i) => {
   const color = seg.mode === "bus"  ? ROUTE_COLORS["bus"]
               : seg.mode === "walk" ? ROUTE_COLORS["walk"]
@@ -88,18 +101,26 @@ function MapView({ route }) {
   )
 })}
 
-      {route && route.path.map((stop, i) => (
-        <CircleMarker
-          key={i}
-          center={[stop.lat, stop.lon]}
-          radius={5}
-          color={MODE_COLORS[stop.mode] || "#333"}
-          fillColor={MODE_COLORS[stop.mode] || "#333"}
-          fillOpacity={0.9}
-        >
-          <Popup>{stop.name}<br/><small>{stop.mode}</small></Popup>
-        </CircleMarker>
-      ))}
+      {route && route.path.map((stop, i) => {
+  const stopColor = stop.mode === "bus"  ? ROUTE_COLORS["bus"]
+                  : stop.mode === "walk" ? ROUTE_COLORS["walk"]
+                  : ROUTE_COLORS[String(stop.route_id)] || "#333"
+  return (
+    <CircleMarker
+      key={i}
+      center={[stop.lat, stop.lon]}
+      radius={4}
+      pathOptions={{
+        color: stopColor,
+        fillColor: "#ffffff",
+        fillOpacity: 1,
+        weight: 2
+      }}
+    >
+      <Popup>{stop.name}<br/><small>{stop.mode}</small></Popup>
+    </CircleMarker>
+  )
+})}
     </MapContainer>
   )
 }
