@@ -59,16 +59,20 @@ function buildSegments(path) {
 
   for (let i = 1; i < path.length; i++) {
     const stop = path[i]
-    // start new segment when mode OR route changes
-    if (stop.mode === current.mode && stop.route_id === current.route_id) {
-      current.points.push([stop.lat, stop.lon])
-    } else {
+    const stopRouteId = String(stop.route_id)
+    const prevRouteId = String(path[i-1].route_id)
+
+    // only start new segment if BOTH this stop AND previous stop
+    // have the new route_id — prevents splitting at transfer station
+    if (stopRouteId !== String(current.route_id) && prevRouteId !== String(current.route_id)) {
       segments.push(current)
       current = {
         mode: stop.mode,
-        route_id: stop.route_id,
+        route_id: stopRouteId,
         points: [[path[i-1].lat, path[i-1].lon], [stop.lat, stop.lon]]
       }
+    } else {
+      current.points.push([stop.lat, stop.lon])
     }
   }
   segments.push(current)
