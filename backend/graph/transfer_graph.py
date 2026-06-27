@@ -14,7 +14,7 @@ from haversine import haversine, Unit
 
 
 WALK_SPEED_KMH    = 4.5   # average walking speed
-MAX_TRANSFER_M    = 400   # only link stops within this distance
+MAX_TRANSFER_M    = 200   # only link stops within this distance
 TRANSFER_PENALTY  = 5.0   # extra minutes added per mode change
 
 

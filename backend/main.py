@@ -2,12 +2,31 @@ import httpx
 import networkx as nx
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from thefuzz import process
 from graph.graph_cache import load_graph
 from routing.geocode import nearest_stop
 from routing.dijkstra import dijkstra
 from routing.bfs import fewest_transfers
+
+def get_path_with_routes(G, path):
+    result = []
+    for i, node in enumerate(path):
+        stop = {
+            "name": G.nodes[node]["name"],
+            "mode": G.nodes[node]["mode"],
+            "lat":  G.nodes[node]["lat"],
+            "lon":  G.nodes[node]["lon"],
+            "route_id": None
+        }
+        # get route_id from the edge leading into this stop
+        if i > 0:
+            prev = path[i-1]
+            if G.has_edge(prev, node):
+                stop["route_id"] = G[prev][node].get("route_id")
+        result.append(stop)
+    return result
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -17,6 +36,14 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 
 @app.get("/health")
@@ -72,17 +99,8 @@ def get_route(request: Request, body: RouteRequest):
 
     return {
         "cost": round(cost, 1),
-        "path": [
-            {
-                "name": G.nodes[node]["name"],
-                "mode": G.nodes[node]["mode"],
-                "lat":  G.nodes[node]["lat"],
-                "lon":  G.nodes[node]["lon"]
+        "path": get_path_with_routes(G, path)
             }
-            for node in path
-        ]
-    }
-
 @app.get("/stops")
 def search_stops(request: Request, q: str):
     G = request.app.state.graph
