@@ -124,10 +124,28 @@ def search_stops(request: Request, q: str):
             for name, score in matches
     ]
 @app.get("/geocode")
-async def geocode(request: Request, address: str):
+async def geocode(request: Request, 
+                  address: str = None,
+                  lat: float = None, 
+                  lon: float = None):
     G = request.app.state.graph
     
-    # call nominatim - free OSM geocoding, no key needed
+    if lat and lon:
+        # coords provided directly — skip nominatim
+        nearest_node, dist_m = nearest_stop(G, lat, lon)
+        return {
+            "lat": lat,
+            "lon": lon,
+            "nearest_stop": nearest_node,
+            "stop_name": G.nodes[nearest_node]["name"],
+            "stop_mode": G.nodes[nearest_node]["mode"],
+            "walk_distance_m": round(dist_m)
+        }
+    
+    if not address:
+        return {"error": "provide either address or lat/lon"}
+    
+    # existing nominatim logic below
     url = "https://nominatim.openstreetmap.org/search"
     params = {"q": address + ", Delhi, India", "format": "json", "limit": 1}
     headers = {"User-Agent": "delhi-transit-planner"}
