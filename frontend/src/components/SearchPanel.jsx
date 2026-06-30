@@ -1,46 +1,90 @@
-import { useState, useRef } from "react"
+import { useState } from "react"
 import axios from "axios"
 import ResultsPanel from "./ResultsPanel"
 
 const API = "http://127.0.0.1:8000"
 
-function StopInput({ label, onSelect,mode }) {
-  const [query, setQuery]           = useState("")
+function StopInput({ label, value, onSelect, mode, onUseLocation, showLocationButton }) {
+  const [query, setQuery] = useState(value || "")
   const [suggestions, setSuggestions] = useState([])
-  const [selected, setSelected]     = useState(null)
+  const [locating, setLocating] = useState(false)
 
   async function handleChange(e) {
     const val = e.target.value
     setQuery(val)
-    setSelected(null)
     if (val.length < 2) { setSuggestions([]); return }
-    
-    // pass mode to filter results
+
     const params = { q: val }
     if (mode === "metro_only") params.mode = "metro"
     if (mode === "bus_only")   params.mode = "bus"
-    
+
     const res = await axios.get(`${API}/stops`, { params })
     setSuggestions(res.data)
   }
 
   function handleSelect(stop) {
     setQuery(stop.name)
-    setSelected(stop)
     setSuggestions([])
     onSelect(stop)
+  }
+
+  async function handleUseLocation() {
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords
+        try {
+          const res = await axios.get(`${API}/geocode`, {
+            params: { lat: latitude, lon: longitude }
+          })
+          if (res.data.error) {
+            alert("Could not find a nearby stop.")
+            setLocating(false)
+            return
+          }
+          setQuery(`Current location (near ${res.data.stop_name})`)
+          onSelect({
+            id: res.data.nearest_stop,
+            name: res.data.stop_name,
+            mode: res.data.stop_mode,
+            lat: res.data.lat,
+            lon: res.data.lon
+          })
+        } catch {
+          alert("Could not fetch your location-based route.")
+        }
+        setLocating(false)
+      },
+      () => {
+        alert("Location access denied. Please allow location access or type a stop name.")
+        setLocating(false)
+      }
+    )
   }
 
   return (
     <div style={{ position: "relative" }}>
       <label style={{ fontSize: "13px", color: "#666" }}>{label}</label>
-      <input
-        type="text"
-        value={query}
-        onChange={handleChange}
-        placeholder="Type a stop name..."
-        style={inputStyle}
-      />
+      <div style={{ display: "flex", gap: "6px" }}>
+        <input
+          type="text"
+          value={query}
+          onChange={handleChange}
+          placeholder="Type a stop name..."
+          style={inputStyle}
+        />
+        {showLocationButton && (
+          <button
+            type="button"
+            onClick={handleUseLocation}
+            disabled={locating}
+            title="Use current location"
+            style={locationButtonStyle}
+          >
+            {locating ? "..." : "📍"}
+          </button>
+        )}
+      </div>
       {suggestions.length > 0 && (
         <div style={{
           position: "absolute",
@@ -51,7 +95,9 @@ function StopInput({ label, onSelect,mode }) {
           border: "1px solid #ddd",
           borderRadius: "8px",
           zIndex: 9999,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
+          boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+          maxHeight: "220px",
+          overflowY: "auto"
         }}>
           {suggestions.map(stop => (
             <div
@@ -66,8 +112,8 @@ function StopInput({ label, onSelect,mode }) {
                 justifyContent: "space-between",
                 alignItems: "center"
               }}
-              onMouseEnter={e => e.target.style.background = "#f5f5f5"}
-              onMouseLeave={e => e.target.style.background = "#fff"}
+              onMouseEnter={e => e.currentTarget.style.background = "#f5f5f5"}
+              onMouseLeave={e => e.currentTarget.style.background = "#fff"}
             >
               <span>{stop.name}</span>
               <span style={{
@@ -86,12 +132,12 @@ function StopInput({ label, onSelect,mode }) {
 }
 
 function SearchPanel({ onRouteFound }) {
-  const [originId, setOriginId]   = useState(null)
-  const [destId, setDestId]       = useState(null)
-  const [mode, setMode]           = useState("fastest")
-  const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState(null)
-  const [route, setRoute]         = useState(null)
+  const [originId, setOriginId] = useState(null)
+  const [destId, setDestId]     = useState(null)
+  const [mode, setMode]         = useState("fastest")
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState(null)
+  const [route, setRoute]       = useState(null)
 
   async function handleSearch() {
     if (!originId || !destId) {
@@ -130,8 +176,18 @@ function SearchPanel({ onRouteFound }) {
         Delhi Transit Planner
       </h2>
 
-      <StopInput label="From" onSelect={s => setOriginId(s.id)} mode={mode} />
-      <StopInput label="To"   onSelect={s => setDestId(s.id)} mode={mode} />
+      <StopInput
+        label="From"
+        onSelect={s => setOriginId(s.id)}
+        mode={mode}
+        showLocationButton={true}
+      />
+      <StopInput
+        label="To"
+        onSelect={s => setDestId(s.id)}
+        mode={mode}
+        showLocationButton={false}
+      />
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
         <label style={{ fontSize: "13px", color: "#666" }}>Mode</label>
@@ -165,7 +221,7 @@ function SearchPanel({ onRouteFound }) {
       </button>
 
       {error && <p style={{ color: "red", fontSize: "13px" }}>{error}</p>}
-      
+
       <ResultsPanel route={route} />
     </div>
   )
@@ -177,6 +233,16 @@ const inputStyle = {
   borderRadius: "8px",
   fontSize: "14px",
   width: "100%"
+}
+
+const locationButtonStyle = {
+  padding: "0.6rem 0.7rem",
+  border: "1px solid #ddd",
+  borderRadius: "8px",
+  background: "#fff",
+  cursor: "pointer",
+  fontSize: "14px",
+  flexShrink: 0
 }
 
 export default SearchPanel
