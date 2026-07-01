@@ -7,8 +7,8 @@ from graph_cache import load_graph
 from bfs import fewest_transfers
 from dijkstra import dijkstra
 G=load_graph()
-src="metro:1"
-dst = "bus:800"
+src="metro:10"
+dst = "bus:852"
 path,cost=fewest_transfers(G,src,dst)
 print(f"Transfers: {cost}")
 print(f"Stops:{len(path)}")

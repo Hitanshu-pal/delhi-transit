@@ -54,6 +54,7 @@ def build_metro_graph(data_dir: str) -> nx.DiGraph:
 
     # Build trip_id -> route_id lookup
     trip_route = dict(zip(trips["trip_id"], trips["route_id"]))
+    trip_shape = dict(zip(trips["trip_id"], trips["shape_id"]))
 
     G = nx.DiGraph()
 
@@ -95,12 +96,15 @@ def build_metro_graph(data_dir: str) -> nx.DiGraph:
 
             # Keep the fastest known time for this edge across all trips
             if not G.has_edge(src, dst):
+                shape_id = trip_shape.get(trip_id, None)
+
                 G.add_edge(src, dst,
-                           weight=travel_time,
-                           mode="metro",
-                           route_id=str(route_id),
-                           from_stop=stop_names.get(curr["stop_id"], src),
-                           to_stop=stop_names.get(nxt["stop_id"], dst))
+                        weight=travel_time,
+                        mode="metro",
+                        route_id=str(route_id),
+                        shape_id=str(shape_id) if shape_id else None,
+                        from_stop=stop_names.get(curr["stop_id"], src),
+                        to_stop=stop_names.get(nxt["stop_id"], dst))
                 edges_added += 1
             elif G[src][dst]["weight"] > travel_time:
                 G[src][dst]["weight"] = travel_time
